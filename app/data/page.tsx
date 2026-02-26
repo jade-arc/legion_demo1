@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Upload, Plus, Trash2, CheckCircle, AlertCircle, ChevronLeft } from 'lucide-react';
+import { Upload, Plus, Trash2, CheckCircle, AlertCircle, ChevronLeft, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { useUserTransactions } from '@/hooks/use-user-transactions';
 import { ThemeToggle } from '@/components/theme-toggle';
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/utils';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 
 const CATEGORIES = [
   'Groceries',
@@ -30,6 +32,8 @@ export default function DataInputPage() {
   const { addTransaction, transactions, removeTransaction } = useUserTransactions();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -37,7 +41,6 @@ export default function DataInputPage() {
     amount: 0,
     type: 'expense' as 'income' | 'expense',
   });
-  const [csvText, setCsvText] = useState('');
 
   const handleAddTransaction = () => {
     setError(null);
@@ -73,69 +76,110 @@ export default function DataInputPage() {
     setTimeout(() => setSuccess(null), 3000);
   };
 
-  const handleImportCSV = () => {
-    setError(null);
-    setSuccess(null);
-
-    if (!csvText.trim()) {
-      setError('Please paste CSV data');
+  const processData = (data: any[]) => {
+    if (data.length === 0) {
+      setError('File is empty');
+      setIsUploading(false);
       return;
     }
 
-    try {
-      const lines = csvText.trim().split('\n');
-      if (lines.length < 2) {
-        setError('CSV must have header row and at least one data row');
-        return;
+    const firstRow = data[0];
+    const keys = Object.keys(firstRow);
+    const dateKey = keys.find(k => k.toLowerCase() === 'date');
+    const descKey = keys.find(k => ['description', 'merchant', 'details'].includes(k.toLowerCase()));
+    const amountKey = keys.find(k => k.toLowerCase() === 'amount');
+    const typeKey = keys.find(k => k.toLowerCase() === 'type');
+    const categoryKey = keys.find(k => k.toLowerCase() === 'category');
+
+    if (!dateKey || !descKey || !amountKey) {
+      setError('File must have headers: date, description (or merchant), amount');
+      setIsUploading(false);
+      return;
+    }
+
+    let imported = 0;
+    data.forEach(row => {
+      const txDateValue = row[dateKey!];
+      let txDate: Date;
+
+      if (typeof txDateValue === 'number' && txDateValue > 40000) {
+        // Excel serial date
+        txDate = new Date((txDateValue - 25569) * 86400 * 1000);
+      } else {
+        txDate = new Date(txDateValue);
       }
 
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      const dateIdx = headers.indexOf('date');
-      const descIdx = headers.indexOf('description') >= 0 ? headers.indexOf('description') : headers.indexOf('merchant');
-      const amountIdx = headers.indexOf('amount');
-      const typeIdx = headers.indexOf('type');
-      const categoryIdx = headers.indexOf('category');
+      const txAmount = parseFloat(row[amountKey!]);
+      const txType = (row[typeKey!] || 'expense').toString().toLowerCase();
 
-      if (dateIdx === -1 || descIdx === -1 || amountIdx === -1) {
-        setError('CSV must have columns: date, description (or merchant), amount');
-        return;
+      if (!isNaN(txAmount) && row[descKey!] && !isNaN(txDate.getTime())) {
+        addTransaction({
+          date: txDate,
+          description: row[descKey].toString(),
+          category: categoryKey ? (row[categoryKey]?.toString() || 'Other') : 'Other',
+          amount: Math.abs(txAmount),
+          type: txType.includes('income') || txAmount > 0 ? 'income' : 'expense',
+        });
+        imported++;
       }
+    });
 
-      let imported = 0;
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        if (values.length < 3) continue;
-
-        try {
-          const txDate = new Date(values[dateIdx]);
-          const txAmount = parseFloat(values[amountIdx]);
-          const txType = (values[typeIdx] || 'expense').toLowerCase() as 'income' | 'expense';
-
-          if (isNaN(txAmount)) continue;
-
-          addTransaction({
-            date: txDate,
-            description: values[descIdx],
-            category: categoryIdx >= 0 ? values[categoryIdx] : 'Other',
-            amount: txAmount,
-            type: txType,
-          });
-          imported++;
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (imported === 0) {
-        setError('No valid transactions could be imported');
-        return;
-      }
-
+    if (imported === 0) {
+      setError('No valid transactions could be imported. Check your date and amount formats.');
+    } else {
       setSuccess(`Successfully imported ${imported} transactions!`);
-      setCsvText('');
       setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      setError(`Failed to parse CSV: ${err.message}`);
+    }
+    setIsUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setError(null);
+    setSuccess(null);
+    setIsUploading(true);
+
+    const fileName = file.name.toLowerCase();
+
+    if (fileName.endsWith('.csv')) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: true,
+        complete: (results) => {
+          processData(results.data);
+        },
+        error: (err) => {
+          setError(`CSV Parse Error: ${err.message}`);
+          setIsUploading(false);
+        }
+      });
+    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const bstr = evt.target?.result as string;
+          const wb = XLSX.read(bstr, { type: 'binary' });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws);
+          processData(data);
+        } catch (err: any) {
+          setError(`Excel Parse Error: ${err.message}`);
+          setIsUploading(false);
+        }
+      };
+      reader.onerror = () => {
+        setError('File reading error');
+        setIsUploading(false);
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      setError('Unsupported file format. Please upload CSV or Excel.');
+      setIsUploading(false);
     }
   };
 
@@ -161,7 +205,7 @@ export default function DataInputPage() {
               <h1 className="text-3xl font-bold text-foreground">Add Transaction Data</h1>
             </div>
             <p className="text-muted-foreground">
-              Manually input transactions or upload via CSV. The AI will analyze this data to optimize your portfolio.
+              Manually input transactions or upload via CSV/Excel. The AI will analyze this data to optimize your portfolio.
             </p>
           </div>
 
@@ -249,33 +293,67 @@ export default function DataInputPage() {
               </div>
             </Card>
 
-            {/* CSV Upload */}
+            {/* File Upload */}
             <Card className="lg:col-span-2 bg-card border-border p-6">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Bulk Import (CSV)</h2>
-              <div className="space-y-4 mb-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">Paste CSV Data</label>
-                  <textarea
-                    placeholder={`date,description,category,amount,type
-2024-01-15,Whole Foods groceries,Groceries,45.50,expense
-2024-01-16,Tech Company,Salary,5000,income
-2024-01-17,Electricity bill,Utilities,125.00,expense`}
-                    value={csvText}
-                    onChange={(e) => setCsvText(e.target.value)}
-                    className="w-full bg-muted border border-border text-foreground rounded-md px-3 py-2 font-mono text-sm min-h-40"
-                  />
+              <h2 className="text-xl font-semibold text-foreground mb-4">Bulk Import (CSV/Excel)</h2>
+              <div className="flex flex-col items-center justify-center border-2 border-dashed border-border rounded-xl p-12 transition-colors hover:border-primary/50 group">
+                <div className="bg-primary/10 p-4 rounded-full mb-4 group-hover:bg-primary/20 transition-colors">
+                  <Upload className="h-8 w-8 text-primary" />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Required columns: date, description, amount, type. Optional: category
+                <h3 className="text-lg font-medium text-foreground mb-2">Upload your transaction file</h3>
+                <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">
+                  Drag and drop your file here, or click to browse. Supports .csv, .xlsx, and .xls formats.
                 </p>
-                <Button
-                  onClick={handleImportCSV}
-                  disabled={!csvText}
-                  className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Import CSV
-                </Button>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept=".csv, .xlsx, .xls"
+                  className="hidden"
+                />
+
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="gap-2"
+                  >
+                    {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {isUploading ? 'Processing...' : 'Choose File'}
+                  </Button>
+                </div>
+
+                <div className="mt-8 grid grid-cols-2 gap-8 w-full border-t border-border pt-8">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-blue-500/10 p-2 rounded-lg">
+                      <FileText className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">CSV Files</p>
+                      <p className="text-xs text-muted-foreground">Standard comma-separated</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="bg-green-500/10 p-2 rounded-lg">
+                      <FileSpreadsheet className="h-5 w-5 text-green-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Excel Files</p>
+                      <p className="text-xs text-muted-foreground">.xlsx or .xls formats</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-6">
+                <h4 className="text-sm font-semibold text-foreground mb-2">Required Columns:</h4>
+                <div className="flex flex-wrap gap-2">
+                  <code className="bg-muted px-2 py-1 rounded text-xs">date</code>
+                  <code className="bg-muted px-2 py-1 rounded text-xs">description</code>
+                  <code className="bg-muted px-2 py-1 rounded text-xs">amount</code>
+                  <span className="text-xs text-muted-foreground mt-1 ml-1">(Optional: type, category)</span>
+                </div>
               </div>
             </Card>
           </div>
@@ -327,7 +405,7 @@ export default function DataInputPage() {
             <Card className="bg-muted/30 border border-dashed border-border p-12 text-center">
               <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
               <p className="text-foreground font-medium">No transactions yet</p>
-              <p className="text-sm text-muted-foreground">Add transactions using the form above or import from CSV</p>
+              <p className="text-sm text-muted-foreground">Add transactions using the form above or upload a file</p>
             </Card>
           )}
         </div>
