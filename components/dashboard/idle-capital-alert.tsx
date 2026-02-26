@@ -84,8 +84,21 @@ export function IdleCapitalAlert({ amount }: IdleCapitalAlertProps) {
                       {opp.trend === 'down' && <TrendingDown className="h-3 w-3 text-red-400" />}
                       {opp.trend === 'neutral' && <Minus className="h-3 w-3 text-gray-400" />}
                     </div>
-                    <div className="text-lg font-bold text-white mb-1">{opp.apy} APY</div>
-                    <div className="text-[10px] text-blue-300/80 mb-3">{opp.price}</div>
+
+                    <div className="flex flex-col gap-0.5 mb-3">
+                      <div className="text-lg font-bold text-white">{opp.apy} APY</div>
+                      <div className="text-[10px] text-blue-300/80 font-medium">
+                        Live Price: {opp.price}
+                      </div>
+                    </div>
+
+                    <div className="bg-blue-400/10 rounded-lg p-2 mb-3 border border-blue-400/5">
+                      <div className="text-[10px] text-blue-300 uppercase tracking-tighter mb-0.5">Suggested Investment</div>
+                      <div className="text-sm font-bold text-blue-100">
+                        {formatCurrency(opp.suggestedAmount)}
+                      </div>
+                    </div>
+
                     <p className="text-[11px] text-blue-200/70 leading-relaxed italic line-clamp-2">
                       "{opp.recommendation}"
                     </p>

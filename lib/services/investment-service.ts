@@ -4,6 +4,8 @@ import { getMultipleCryptoPrices } from "./coingecko";
 export interface InvestmentOpportunity {
     asset: string;
     price: string;
+    priceValue: number;
+    suggestedAmount: number;
     trend: 'up' | 'down' | 'neutral';
     recommendation: string;
     apy: string;
@@ -31,9 +33,13 @@ export async function getInvestmentAnalysis(
     Return a JSON array of objects with:
     - asset: string (e.g., "Ethereum Staking")
     - price: string (current price formatted with ₹)
+    - priceValue: number (the current raw price in INR)
+    - suggestedAmount: number (how much of the ₹${idleAmount} to invest in this asset)
     - trend: 'up' | 'down' | 'neutral'
     - recommendation: string (one sentence why this is good for longevity)
-    - apy: string (estimated annual yield, e.g. "4.2%")`;
+    - apy: string (estimated annual yield, e.g. "4.2%")
+    
+    Ensure the sum of suggestedAmount does not exceed ₹${idleAmount}.`;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
@@ -42,7 +48,13 @@ export async function getInvestmentAnalysis(
         const jsonMatch = text.match(/\[[\s\S]*\]/);
         if (!jsonMatch) throw new Error("No JSON array found in response");
 
-        return JSON.parse(jsonMatch[0]);
+        const rawData = JSON.parse(jsonMatch[0]);
+
+        return rawData.map((opp: any) => ({
+            ...opp,
+            priceValue: Number(opp.priceValue) || 0,
+            suggestedAmount: Number(opp.suggestedAmount) || 0
+        }));
     } catch (error) {
         console.error("Investment analysis failed:", error);
         // Generic fallback
@@ -50,6 +62,8 @@ export async function getInvestmentAnalysis(
             {
                 asset: "Ethereum Staking",
                 price: "Market Price",
+                priceValue: 0,
+                suggestedAmount: idleAmount * 0.5,
                 trend: "neutral",
                 recommendation: "Stake ETH for long-term network rewards and capital appreciation.",
                 apy: "3.5%"
@@ -57,6 +71,8 @@ export async function getInvestmentAnalysis(
             {
                 asset: "Aave Lending",
                 price: "Market Price",
+                priceValue: 0,
+                suggestedAmount: idleAmount * 0.3,
                 trend: "up",
                 recommendation: "Supply liquidity to Aave for stable yields in the DeFi ecosystem.",
                 apy: "5.1%"
