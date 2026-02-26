@@ -54,11 +54,12 @@ git push origin main
 
 In Vercel project settings → Environment Variables:
 
-```
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-GOOGLE_GENERATIVE_AI_API_KEY=...
-```
+| Key | Value Source |
+| :--- | :--- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Public Key |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini API Key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key (if needed for admin APIs) |
 
 ### 4. Deploy
 
