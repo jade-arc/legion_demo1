@@ -56,7 +56,17 @@ export default function DashboardPage() {
       const longevityValue = 0; // Removing hardcoded ETH/AAVE values
 
       const portfolioValue = stats.balance + longevityValue;
-      const monthlySpending = stats.totalExpenses > 0 ? stats.totalExpenses / 6 : 0;
+
+      // Calculate active months for average (max 3 as requested)
+      let monthsCount = 1;
+      if (transactions && transactions.length > 0) {
+        const earliestDate = new Date(Math.min(...transactions.map(t => t.date.getTime())));
+        const now = new Date();
+        const diffMonth = (now.getFullYear() - earliestDate.getFullYear()) * 12 + (now.getMonth() - earliestDate.getMonth()) + 1;
+        monthsCount = Math.max(1, Math.min(3, diffMonth));
+      }
+
+      const monthlySpending = stats.totalExpenses > 0 ? stats.totalExpenses / monthsCount : 0;
       const idleCapital = stats.balance * 0.15;
 
       const traditionValue = stats.balance;

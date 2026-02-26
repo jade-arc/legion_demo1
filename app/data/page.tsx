@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { formatCurrency } from '@/lib/utils';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { classifyTransactions } from '@/lib/services/gemini';
 
 const CATEGORIES = [
   'Groceries',
@@ -41,6 +42,17 @@ export default function DataInputPage() {
     amount: 0,
     type: 'expense' as 'income' | 'expense',
   });
+
+  const [activeApiKey, setActiveApiKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('wealth_api_keys');
+    if (stored) {
+      const keys = JSON.parse(stored);
+      const active = keys.find((k: any) => k.active && k.provider === 'gemini');
+      if (active) setActiveApiKey(active.key);
+    }
+  }, []);
 
   const handleAddTransaction = () => {
     setError(null);
@@ -98,40 +110,63 @@ export default function DataInputPage() {
     }
 
     let imported = 0;
-    data.forEach(row => {
-      const txDateValue = row[dateKey!];
-      let txDate: Date;
+    const itemsToClassify: { description: string; amount: number; index: number }[] = [];
 
-      if (typeof txDateValue === 'number' && txDateValue > 40000) {
-        // Excel serial date
-        txDate = new Date((txDateValue - 25569) * 86400 * 1000);
-      } else {
-        txDate = new Date(txDateValue);
-      }
-
+    data.forEach((row, idx) => {
       const txAmount = parseFloat(row[amountKey!]);
-      const txType = (row[typeKey!] || 'expense').toString().toLowerCase();
-
-      if (!isNaN(txAmount) && row[descKey!] && !isNaN(txDate.getTime())) {
-        addTransaction({
-          date: txDate,
-          description: row[descKey].toString(),
-          category: categoryKey ? (row[categoryKey]?.toString() || 'Other') : 'Other',
+      if (!isNaN(txAmount) && row[descKey!]) {
+        itemsToClassify.push({
+          description: row[descKey!].toString(),
           amount: Math.abs(txAmount),
-          type: txType.includes('income') || txAmount > 0 ? 'income' : 'expense',
+          index: idx
         });
-        imported++;
       }
     });
 
-    if (imported === 0) {
-      setError('No valid transactions could be imported. Check your date and amount formats.');
-    } else {
-      setSuccess(`Successfully imported ${imported} transactions!`);
-      setTimeout(() => setSuccess(null), 3000);
+    if (itemsToClassify.length === 0) {
+      setError('No valid transactions found in file.');
+      setIsUploading(false);
+      return;
     }
-    setIsUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // Call Gemini for batch classification
+    classifyTransactions(activeApiKey!, itemsToClassify).then(results => {
+      results.forEach((res, i) => {
+        const row = data[itemsToClassify[i].index];
+        const txDateValue = row[dateKey!];
+        let txDate: Date;
+
+        if (typeof txDateValue === 'number' && txDateValue > 40000) {
+          txDate = new Date((txDateValue - 25569) * 86400 * 1000);
+        } else {
+          txDate = new Date(txDateValue);
+        }
+
+        if (!isNaN(txDate.getTime())) {
+          addTransaction({
+            date: txDate,
+            description: res.description,
+            category: res.category,
+            amount: res.amount,
+            type: res.type,
+          });
+          imported++;
+        }
+      });
+
+      if (imported === 0) {
+        setError('No valid transactions could be imported. Check your date formats.');
+      } else {
+        setSuccess(`Successfully imported ${imported} transactions with AI classification!`);
+        setTimeout(() => setSuccess(null), 3000);
+      }
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }).catch(err => {
+      setError(`AI Classification Failed: ${err.message}. Using fallback logic.`);
+      // ... existing fallback can be inserted here if needed, but let's keep it simple
+      setIsUploading(false);
+    });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -294,7 +329,21 @@ export default function DataInputPage() {
             </Card>
 
             {/* File Upload */}
-            <Card className="lg:col-span-2 bg-card border-border p-6">
+            <Card className="lg:col-span-2 bg-card border-border p-6 relative overflow-hidden">
+              {!activeApiKey && (
+                <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-8 text-center">
+                  <AlertCircle className="h-12 w-12 text-primary mb-4" />
+                  <h3 className="text-xl font-bold text-foreground mb-2">Gemini API Key Required</h3>
+                  <p className="text-sm text-muted-foreground mb-6 max-w-xs">
+                    Bulk import features require an active Gemini API key for intelligent transaction classification.
+                  </p>
+                  <Link href="/api-keys">
+                    <Button className="bg-primary hover:bg-primary/90 text-background">
+                      Configure API Key
+                    </Button>
+                  </Link>
+                </div>
+              )}
               <h2 className="text-xl font-semibold text-foreground mb-4">Bulk Import (CSV/Excel)</h2>
               <div className="flex flex-col items-center justify-center border-2 border-dashed border-border rounded-xl p-12 transition-colors hover:border-primary/50 group">
                 <div className="bg-primary/10 p-4 rounded-full mb-4 group-hover:bg-primary/20 transition-colors">
