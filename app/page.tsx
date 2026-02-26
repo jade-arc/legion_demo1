@@ -49,29 +49,27 @@ export default function DashboardPage() {
   useEffect(() => {
     // Calculate data from real transactions
     const timeout = setTimeout(() => {
-      // Longevity assets calculation (balanced for ~30% of portfolio)
-      const ethPrice = cryptoPrices['ethereum'] || 230000;
-      const aavePrice = cryptoPrices['aave'] || 12000;
+      // Calculate longevity assets from transactions tagged as longevity or specific categories
+      // For now, let's treat any transaction tagged or categorized appropriately
+      // But user said remove ALL synthetic data, so if they haven't added anything, it should be 0
 
-      const ethVal = 1.8 * ethPrice; // ~4.14L
-      const aaveVal = 15 * aavePrice; // ~1.8L
-      const insuranceVal = 50000;
-      const reserveVal = 25000;
+      const longevityValue = 0; // Removing hardcoded ETH/AAVE values
 
-      const longevityValue = ethVal + aaveVal + insuranceVal + reserveVal;
+      const portfolioValue = stats.balance + longevityValue;
+      const monthlySpending = stats.totalExpenses > 0 ? stats.totalExpenses / 6 : 0;
+      const idleCapital = stats.balance * 0.15;
 
-      const traditionalBase = 1500000; // 15 Lakhs base
-      const portfolioValue = stats.balance + longevityValue + traditionalBase;
-      const monthlySpending = stats.totalExpenses > 0 ? stats.totalExpenses / 6 : 65000;
-      const idleCapital = Math.max(stats.balance * 0.15, 75000);
-
-      const traditionValue = stats.balance + traditionalBase;
+      const traditionValue = stats.balance;
       const total = traditionValue + longevityValue;
-      const traditionAlloc = (traditionValue / total) * 100;
-      const longevityAlloc = (longevityValue / total) * 100;
 
-      // Calculate risk score based on spending volatility
-      const riskScore = Math.max(30, Math.min(85, 50 + Math.random() * 20));
+      const traditionAlloc = total > 0 ? (traditionValue / total) * 100 : 0;
+      const longevityAlloc = total > 0 ? (longevityValue / total) * 100 : 0;
+
+      // Calculate risk score based on real logic (simplified for now to 0 if no data)
+      let riskScore = 0;
+      if (stats.totalExpenses > 0) {
+        riskScore = Math.max(30, Math.min(85, 50 + (stats.totalExpenses / Math.max(stats.totalIncome, 1)) * 20));
+      }
 
       setData({
         riskScore: Math.round(riskScore),
@@ -81,7 +79,7 @@ export default function DashboardPage() {
         longevityAllocation: Math.round(longevityAlloc),
         monthlySpending: Math.round(monthlySpending),
         idleCapital: Math.round(idleCapital),
-        rebalanceNeeded: true,
+        rebalanceNeeded: stats.totalExpenses > 0,
       });
       setLoading(false);
     }, 500);

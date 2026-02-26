@@ -27,44 +27,7 @@ export function LongevityAssetsBreakdown() {
     'longevity-index': 100.00
   });
 
-  const [assets, setAssets] = useState<LongevityAsset[]>([
-    {
-      id: 'ethereum',
-      name: 'Ethereum Staking',
-      allocation: 60,
-      quantity: 1.8,
-      value: 414000,
-      apy: 3.2,
-      description: 'Proof-of-stake rewards from Ethereum validators',
-    },
-    {
-      id: 'aave',
-      name: 'Yield Farming (Aave)',
-      allocation: 25,
-      quantity: 15,
-      value: 180000,
-      apy: 5.8,
-      description: 'Liquidity provider yields from decentralized finance',
-    },
-    {
-      id: 'longevity-index',
-      name: 'Longevity Insurance',
-      allocation: 10,
-      quantity: 500,
-      value: 50000,
-      apy: 4.5,
-      description: 'Index-linked insurance for extended lifespan events',
-    },
-    {
-      id: 'tether',
-      name: 'Digital Assets Reserve',
-      allocation: 5,
-      quantity: 300,
-      value: 25050,
-      apy: 0.0,
-      description: 'Reserve stablecoin holdings for liquidity',
-    },
-  ]);
+  const [assets, setAssets] = useState<LongevityAsset[]>([]);
 
   const fetchPrices = async () => {
     setLoading(true);

@@ -7,48 +7,70 @@ import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
+import { useUserTransactions } from '@/hooks/use-user-transactions';
+import { useMemo } from 'react';
+
 export function TransactionSummary() {
+  const { transactions, stats } = useUserTransactions();
   const [timeframe, setTimeframe] = useState<'6m' | '12m' | 'ytd'>('6m');
 
-  // Generate 24 months of data (2 years)
-  const allMonthsData = [
-    // 2024
-    { month: 'Jan 24', spending: 65000, income: 150000 },
-    { month: 'Feb 24', spending: 68000, income: 150000 },
-    { month: 'Mar 24', spending: 71000, income: 160000 },
-    { month: 'Apr 24', spending: 69000, income: 160000 },
-    { month: 'May 24', spending: 73000, income: 165000 },
-    { month: 'Jun 24', spending: 72000, income: 160000 },
-    { month: 'Jul 24', spending: 75000, income: 170000 },
-    { month: 'Aug 24', spending: 71000, income: 165000 },
-    { month: 'Sep 24', spending: 74000, income: 170000 },
-    { month: 'Oct 24', spending: 69000, income: 165000 },
-    { month: 'Nov 24', spending: 76000, income: 175000 },
-    { month: 'Dec 24', spending: 85000, income: 185000 },
-    // 2025
-    { month: 'Jan 25', spending: 72000, income: 170000 },
-    { month: 'Feb 25', spending: 71000, income: 170000 },
-    { month: 'Mar 25', spending: 73000, income: 175000 },
-    { month: 'Apr 25', spending: 74000, income: 180000 },
-    { month: 'May 25', spending: 71500, income: 175000 },
-    { month: 'Jun 25', spending: 73500, income: 180000 },
-    { month: 'Jul 25', spending: 75000, income: 185000 },
-    { month: 'Aug 25', spending: 72000, income: 180000 },
-    { month: 'Sep 25', spending: 74500, income: 185000 },
-    { month: 'Oct 25', spending: 71000, income: 175000 },
-    { month: 'Nov 25', spending: 75500, income: 185000 },
-    { month: 'Dec 25', spending: 82000, income: 195000 },
-  ];
+  const chartData = useMemo(() => {
+    if (!transactions || transactions.length === 0) return [];
 
-  // Filter data based on timeframe
-  const get6mData = () => allMonthsData.slice(-6);
-  const get12mData = () => allMonthsData.slice(-12);
-  const getYtdData = () => {
-    // YTD 2025 (Jan-Dec 2025)
-    return allMonthsData.slice(12);
-  };
+    const now = new Date();
+    const result: Record<string, { month: string; spending: number; income: number; sortKey: string }> = {};
 
-  const data = timeframe === '6m' ? get6mData() : timeframe === '12m' ? get12mData() : getYtdData();
+    // Determine how many months to look back
+    let monthsToLookBack = timeframe === '6m' ? 6 : timeframe === '12m' ? 12 : (now.getMonth() + 1);
+
+    // Sort transactions by date
+    const sortedTx = [...transactions].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    // Group by month
+    transactions.forEach(tx => {
+      const date = new Date(tx.date);
+      const monthYear = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      const sortKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+
+      if (!result[sortKey]) {
+        result[sortKey] = { month: monthYear, spending: 0, income: 0, sortKey };
+      }
+
+      if (tx.type === 'income') {
+        result[sortKey].income += tx.amount;
+      } else {
+        result[sortKey].spending += tx.amount;
+      }
+    });
+
+    // Convert to array and filter for timeframe
+    let dataArray = Object.values(result).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    if (timeframe === '6m') {
+      dataArray = dataArray.slice(-6);
+    } else if (timeframe === '12m') {
+      dataArray = dataArray.slice(-12);
+    } else if (timeframe === 'ytd') {
+      const currentYear = now.getFullYear();
+      dataArray = dataArray.filter(d => d.sortKey.startsWith(currentYear.toString()));
+    }
+
+    return dataArray;
+  }, [transactions, timeframe]);
+
+  // Derived averages
+  const averages = useMemo(() => {
+    if (chartData.length === 0) return { spending: 0, income: 0 };
+    const sums = chartData.reduce((acc, curr) => ({
+      spending: acc.spending + curr.spending,
+      income: acc.income + curr.income
+    }), { spending: 0, income: 0 });
+
+    return {
+      spending: sums.spending / chartData.length,
+      income: sums.income / chartData.length
+    };
+  }, [chartData]);
 
   return (
     <Card className="bg-card border-border p-6 hover:border-primary/50 transition-colors">
@@ -91,37 +113,43 @@ export function TransactionSummary() {
       </div>
       <div className="h-80 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2d3748" />
-            <XAxis dataKey="month" stroke="#94a3b8" />
-            <YAxis stroke="#94a3b8" />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#1a202c',
-                border: '1px solid #2d3748',
-                borderRadius: '8px',
-              }}
-              labelStyle={{ color: '#f1f5f9' }}
-              formatter={(value) => formatCurrency(Number(value))}
-            />
-            <Legend
-              wrapperStyle={{ paddingTop: '20px' }}
-              iconType="square"
-            />
-            <Bar dataKey="income" fill="#10b981" radius={[8, 8, 0, 0]} />
-            <Bar dataKey="spending" fill="#f59e0b" radius={[8, 8, 0, 0]} />
-          </BarChart>
+          {chartData.length > 0 ? (
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2d3748" />
+              <XAxis dataKey="month" stroke="#94a3b8" />
+              <YAxis stroke="#94a3b8" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1a202c',
+                  border: '1px solid #2d3748',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#f1f5f9' }}
+                formatter={(value) => formatCurrency(Number(value))}
+              />
+              <Legend
+                wrapperStyle={{ paddingTop: '20px' }}
+                iconType="square"
+              />
+              <Bar dataKey="income" fill="#10b981" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="spending" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground">
+              No transaction history available.
+            </div>
+          )}
         </ResponsiveContainer>
       </div>
 
       <div className="grid grid-cols-2 gap-4 mt-8">
         <div className="bg-muted/30 rounded-lg p-4">
           <p className="text-muted-foreground text-sm mb-1">Average Monthly Spending</p>
-          <p className="text-2xl font-bold text-foreground">{formatCurrency(73500)}</p>
+          <p className="text-2xl font-bold text-foreground">{formatCurrency(averages.spending)}</p>
         </div>
         <div className="bg-muted/30 rounded-lg p-4">
           <p className="text-muted-foreground text-sm mb-1">Average Monthly Income</p>
-          <p className="text-2xl font-bold text-foreground">{formatCurrency(172000)}</p>
+          <p className="text-2xl font-bold text-foreground">{formatCurrency(averages.income)}</p>
         </div>
       </div>
 

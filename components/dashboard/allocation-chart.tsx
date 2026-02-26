@@ -46,8 +46,6 @@ export function AllocationChart({ traditional, longevity }: AllocationChartProps
                 <Cell
                   key={`cell-${index}`}
                   fill={entry.fill}
-                  opacity={hoveredSection === null || hoveredSection === entry.name ? 1 : 0.5}
-                  style={{ transition: 'opacity 0.2s ease' }}
                 />
               ))}
             </Pie>
