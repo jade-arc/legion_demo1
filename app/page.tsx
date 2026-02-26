@@ -89,7 +89,7 @@ export default function DashboardPage() {
         longevityAllocation: Math.round(longevityAlloc),
         monthlySpending: Math.round(monthlySpending),
         idleCapital: Math.round(idleCapital),
-        rebalanceNeeded: stats.totalExpenses > 0,
+        rebalanceNeeded: Math.abs(traditionAlloc - 70) > 2 || Math.abs(longevityAlloc - 30) > 2,
       });
       setLoading(false);
     }, 500);
@@ -199,7 +199,11 @@ export default function DashboardPage() {
         {/* Recommendations & Alerts */}
         <div className="grid grid-cols-1 gap-6 mb-8">
           {data.rebalanceNeeded && (
-            <RebalanceRecommendations />
+            <RebalanceRecommendations
+              traditional={data.traditionalAllocation}
+              longevity={data.longevityAllocation}
+              portfolioValue={data.portfolioValue}
+            />
           )}
           {data.idleCapital > 0 && (
             <IdleCapitalAlert amount={data.idleCapital} />
