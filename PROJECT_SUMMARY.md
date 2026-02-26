@@ -241,10 +241,10 @@ pnpm dev  # Runs on localhost:3000
 ```
 
 ### Production
-- Deploy to Vercel (automatic from GitHub)
+- Deploy to Vercel (One-click from GitHub)
 - Supabase production database
-- Gemini API with quota management
-- Environment variable configuration
+- Gemini API with environment variables
+- Continuous Deployment (CD) enabled
 
 ### Monitoring
 - Error tracking (Sentry)
